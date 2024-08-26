@@ -13,6 +13,9 @@ public class LineScript : MonoBehaviour
     [SerializeField] private Shader shader;
     int width = 1200;
     int height = 13874;
+    
+    private Dictionary<string, Vector2> textureScales = new Dictionary<string, Vector2>(); 
+    private float defaultScaleFactor = 0.0005f; 
     void Start()
     {
         if (text != null)
@@ -20,6 +23,7 @@ public class LineScript : MonoBehaviour
             text.text = "Ready to interact";
         }
     }
+
     void Update()
     {
         if (OVRInput.Get(OVRInput.Button.SecondaryIndexTrigger))
@@ -37,24 +41,7 @@ public class LineScript : MonoBehaviour
                 {
                     Debug.Log($"Hit: {hitPlane.transform.parent.name}");
 
-                    Material material = new Material(shader);
-                    material.mainTexture = texture;
-                    material.SetFloat("_Cull", (float)CullMode.Off);
-                    float scaleFactor = 0.0005f;
-                    float imageWidth = width * scaleFactor;
-                    float imageHeight = height * scaleFactor;
-                    float planeWidth = hitPlane.transform.localScale.x;
-                    float planeHeight = hitPlane.transform.localScale.z;
-                    float tileX = planeWidth / imageWidth;
-                    float tileY = planeHeight / imageHeight;
-                    material.mainTextureScale = new Vector2(tileX, tileY);
-                    MeshRenderer planeRenderer = hitPlane.GetComponentInParent<MeshRenderer>();
-                    planeRenderer.material = material;
-
-                    if (text != null)
-                    {
-                        text.text = "Texture applied!";
-                    }
+                    ApplyTextureToPlane(hitPlane);
                 }
                 else
                 {
@@ -67,6 +54,7 @@ public class LineScript : MonoBehaviour
                 }
             }
         }
+
         if (OVRInput.Get(OVRInput.Button.One))
         {
             GameObject[] wallFaces = GameObject.FindGameObjectsWithTag("WALL_FACE");
@@ -80,6 +68,16 @@ public class LineScript : MonoBehaviour
         {
             ResetAllPlanes();
         }
+
+        if (OVRInput.Get(OVRInput.Button.Start))
+        {
+            SaveTextureSettings();
+        }
+
+        if (OVRInput.Get(OVRInput.Button.Back))
+        {
+            LoadTextureSettings();
+        }
     }
 
     private void ApplyTextureToPlane(GameObject plane)
@@ -88,7 +86,13 @@ public class LineScript : MonoBehaviour
         material.mainTexture = texture;
         material.SetFloat("_Cull", (float)CullMode.Off);
 
-        float scaleFactor = 0.0005f;
+        float scaleFactor = defaultScaleFactor;
+        if (textureScales.ContainsKey(plane.name))
+        {
+            Vector2 savedScale = textureScales[plane.name];
+            scaleFactor = savedScale.x / width; 
+        }
+
         float imageWidth = width * scaleFactor;
         float imageHeight = height * scaleFactor;
 
@@ -121,5 +125,68 @@ public class LineScript : MonoBehaviour
                 text.text = $"Reset {wallFace.name}";
             }
         }
+    }
+
+    private void SaveTextureSettings()
+    {
+        GameObject[] wallFaces = GameObject.FindGameObjectsWithTag("WALL_FACE");
+        foreach (GameObject wallFace in wallFaces)
+        {
+            MeshRenderer planeRenderer = wallFace.GetComponentInParent<MeshRenderer>();
+            if (planeRenderer != null && planeRenderer.material != null)
+            {
+                Vector2 textureScale = planeRenderer.material.mainTextureScale;
+                textureScales[wallFace.name] = textureScale;
+                PlayerPrefs.SetFloat($"{wallFace.name}_TileX", textureScale.x);
+                PlayerPrefs.SetFloat($"{wallFace.name}_TileY", textureScale.y);
+                Debug.Log($"Saved texture scale for {wallFace.name}: {textureScale}");
+            }
+        }
+        PlayerPrefs.Save();
+        if (text != null)
+        {
+            text.text = "Texture settings saved!";
+        }
+    }
+
+    private void LoadTextureSettings()
+    {
+        GameObject[] wallFaces = GameObject.FindGameObjectsWithTag("WALL_FACE");
+        foreach (GameObject wallFace in wallFaces)
+        {
+            if (PlayerPrefs.HasKey($"{wallFace.name}_TileX") && PlayerPrefs.HasKey($"{wallFace.name}_TileY"))
+            {
+                float tileX = PlayerPrefs.GetFloat($"{wallFace.name}_TileX");
+                float tileY = PlayerPrefs.GetFloat($"{wallFace.name}_TileY");
+                textureScales[wallFace.name] = new Vector2(tileX, tileY);
+                Debug.Log($"Loaded texture scale for {wallFace.name}: {tileX}, {tileY}");
+                ApplyTextureToPlane(wallFace); // Reapply texture with loaded settings
+            }
+        }
+        if (text != null)
+        {
+            text.text = "Texture settings loaded!";
+        }
+    }
+
+    public void AdjustScaleFactor(float newScaleFactor)
+    {
+        defaultScaleFactor = newScaleFactor;
+        Debug.Log($"Default scale factor adjusted to {defaultScaleFactor}");
+    }
+
+    public void PrintDebugInfo()
+    {
+        Debug.Log("Current texture scales:");
+        foreach (var kvp in textureScales)
+        {
+            Debug.Log($"{kvp.Key}: {kvp.Value}");
+        }
+    }
+
+    public void ChangeShader(Shader newShader)
+    {
+        shader = newShader;
+        Debug.Log($"Shader changed to {newShader.name}");
     }
 }
