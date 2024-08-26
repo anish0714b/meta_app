@@ -11,11 +11,17 @@ public class LineScript : MonoBehaviour
     [SerializeField] private TMP_Text text;
     [SerializeField] private Texture2D texture;
     [SerializeField] private Shader shader;
+    [SerializeField] private List<Texture2D> textures; 
+    [SerializeField] private float transparency = 1.0f; 
+    private int currentTextureIndex = 0; 
     int width = 1200;
     int height = 13874;
     
     private Dictionary<string, Vector2> textureScales = new Dictionary<string, Vector2>(); 
+    private Stack<string> undoStack = new Stack<string>(); 
     private float defaultScaleFactor = 0.0005f; 
+    private bool debugMode = false; 
+
     void Start()
     {
         if (text != null)
@@ -42,6 +48,7 @@ public class LineScript : MonoBehaviour
                     Debug.Log($"Hit: {hitPlane.transform.parent.name}");
 
                     ApplyTextureToPlane(hitPlane);
+                    undoStack.Push(hitPlane.name);
                 }
                 else
                 {
@@ -61,6 +68,7 @@ public class LineScript : MonoBehaviour
             foreach (GameObject wallFace in wallFaces)
             {
                 ApplyTextureToPlane(wallFace);
+                undoStack.Push(wallFace.name);
             }
         }
 
@@ -77,6 +85,26 @@ public class LineScript : MonoBehaviour
         if (OVRInput.Get(OVRInput.Button.Back))
         {
             LoadTextureSettings();
+        }
+
+        if (OVRInput.GetDown(OVRInput.Button.Four)) // Button to change the texture
+        {
+            CycleTexture();
+        }
+
+        if (OVRInput.GetDown(OVRInput.Button.Three)) // Button to undo last texture application
+        {
+            UndoLastTexture();
+        }
+
+        if (OVRInput.Get(OVRInput.Button.PrimaryThumbstick)) // Button to adjust transparency
+        {
+            AdjustTransparency(OVRInput.Get(OVRInput.Axis2D.PrimaryThumbstick).x);
+        }
+
+        if (OVRInput.GetDown(OVRInput.Button.PrimaryHandTrigger)) // Toggle debug mode
+        {
+            ToggleDebugMode();
         }
     }
 
@@ -102,6 +130,7 @@ public class LineScript : MonoBehaviour
         float tileX = planeWidth / imageWidth;
         float tileY = planeHeight / imageHeight;
         material.mainTextureScale = new Vector2(tileX, tileY);
+        material.color = new Color(1, 1, 1, transparency); // Set transparency
 
         MeshRenderer planeRenderer = plane.GetComponentInParent<MeshRenderer>();
         planeRenderer.material = material;
@@ -109,6 +138,11 @@ public class LineScript : MonoBehaviour
         if (text != null)
         {
             text.text = $"Applied texture to {plane.name}";
+        }
+
+        if (debugMode)
+        {
+            Debug.Log($"Applied texture to {plane.name} with scale: {tileX}, {tileY}");
         }
     }
 
@@ -123,6 +157,11 @@ public class LineScript : MonoBehaviour
             if (text != null)
             {
                 text.text = $"Reset {wallFace.name}";
+            }
+
+            if (debugMode)
+            {
+                Debug.Log($"Reset texture for {wallFace.name}");
             }
         }
     }
@@ -169,24 +208,50 @@ public class LineScript : MonoBehaviour
         }
     }
 
-    public void AdjustScaleFactor(float newScaleFactor)
+    private void CycleTexture()
     {
-        defaultScaleFactor = newScaleFactor;
-        Debug.Log($"Default scale factor adjusted to {defaultScaleFactor}");
-    }
-
-    public void PrintDebugInfo()
-    {
-        Debug.Log("Current texture scales:");
-        foreach (var kvp in textureScales)
+        currentTextureIndex = (currentTextureIndex + 1) % textures.Count;
+        texture = textures[currentTextureIndex];
+        if (text != null)
         {
-            Debug.Log($"{kvp.Key}: {kvp.Value}");
+            text.text = $"Texture changed to {texture.name}";
         }
     }
 
-    public void ChangeShader(Shader newShader)
+    private void UndoLastTexture()
     {
-        shader = newShader;
-        Debug.Log($"Shader changed to {newShader.name}");
+        if (undoStack.Count > 0)
+        {
+            string lastPlaneName = undoStack.Pop();
+            GameObject lastPlane = GameObject.Find(lastPlaneName);
+            if (lastPlane != null)
+            {
+                MeshRenderer planeRenderer = lastPlane.GetComponentInParent<MeshRenderer>();
+                planeRenderer.material = null;
+                if (text != null)
+                {
+                    text.text = $"Undid texture on {lastPlaneName}";
+                }
+                if (debugMode)
+                {
+                    Debug.Log($"Undid texture on {lastPlaneName}");
+                }
+            }
+        }
+    }
+
+    private void AdjustTransparency(float adjustment)
+    {
+        transparency = Mathf.Clamp01(transparency + adjustment * 0.1f);
+        if (text != null)
+        {
+            text.text = $"Transparency adjusted to {transparency}";
+        }
+    }
+
+    private void ToggleDebugMode()
+    {
+        debugMode = !debugMode;
+        Debug.Log($"Debug mode: {debugMode}");
     }
 }
