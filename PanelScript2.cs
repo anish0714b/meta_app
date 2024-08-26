@@ -32,15 +32,20 @@ public class PanelsScript2 : MonoBehaviour
     public TextMeshProUGUI loadingText;
     private bool isLoading = false;
 
+    public GameObject panelDetailsUI;
+    public TextMeshProUGUI panelDetailsText;
+    private bool isPanelLocked = false;
+
     void Start()
     {
         StartCoroutine(SetupPanels());
         audioSource = gameObject.AddComponent<AudioSource>();
+        panelDetailsUI.SetActive(false);
     }
 
     void Update()
     {
-        if (isPanelSelected)
+        if (isPanelSelected && !isPanelLocked)
         {
             CheckForWallPointing();
         }
@@ -70,7 +75,7 @@ public class PanelsScript2 : MonoBehaviour
             Sprite sprite = Sprite.Create(textures[i], new Rect(0, 0, textures[i].width, textures[i].height), Vector2.one * 0.5f);
             imageComponent.sprite = sprite;
 
-            yield return null; // Yielding here to simulate loading time and avoid freezing
+            yield return null;
         }
 
         currentTexture = textures[0];
@@ -151,11 +156,14 @@ public class PanelsScript2 : MonoBehaviour
         pointCircle.SetActive(false);
         isPanelSelected = false;
         SaveLastSelectedPanel();
+        DisplayPanelDetails(currentTexture, hitPlane);
     }
 
     void OnPanelClick(int t)
     {
         PlayClickSound();
+        if (isPanelLocked) return;
+
         currentTexture = textures[t];
         for (int i = 0; i < textures.Length; i++)
         {
@@ -226,5 +234,39 @@ public class PanelsScript2 : MonoBehaviour
         {
             panel.SetActive(false);
         }
+    }
+
+    public void ResetPanels()
+    {
+        foreach (var panel in borderPanels)
+        {
+            panel.SetActive(false);
+        }
+        isPanelSelected = false;
+        pointCircle.SetActive(false);
+        panelNameText.text = "No Panel Selected";
+        panelDetailsUI.SetActive(false);
+    }
+
+    public void ChangePanelColor(Color color)
+    {
+        foreach (var panel in borderPanels)
+        {
+            panel.GetComponent<Image>().color = color;
+        }
+    }
+
+    public void TogglePanelLock()
+    {
+        isPanelLocked = !isPanelLocked;
+        panelNameText.text = isPanelLocked ? "Panel Locked" : "Panel Unlocked";
+    }
+
+    private void DisplayPanelDetails(Texture2D texture, GameObject plane)
+    {
+        panelDetailsUI.SetActive(true);
+        panelDetailsText.text = $"Panel: {texture.name}\n" +
+                                $"Plane Position: {plane.transform.position}\n" +
+                                $"Plane Size: {plane.transform.localScale}";
     }
 }
