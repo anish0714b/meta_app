@@ -24,17 +24,48 @@ public class PlaneScript : MonoBehaviour
     private GameObject selectionIndicator;
     private Material lastAppliedMaterial;
 
+    public ColorPicker colorPicker;  // Assume you have a color picker UI component
+    public Button saveButton;
+    public Button loadButton;
+
+    private Color lastAppliedColor;
+    private string savedMaterialPath = "SavedMaterial.json";  // Save path for material settings
+
     void Start()
     {
         audioSource = gameObject.AddComponent<AudioSource>();
         CreateSelectionIndicator();
+
+        if (saveButton != null)
+        {
+            saveButton.onClick.AddListener(SaveMaterialSettings);
+        }
+
+        if (loadButton != null)
+        {
+            loadButton.onClick.AddListener(LoadMaterialSettings);
+        }
+
+        if (colorPicker != null)
+        {
+            colorPicker.onColorChanged += OnColorChanged;  // Assuming the color picker has this event
+        }
     }
 
     void Update()
     {
+        HandleInput();
+
+        if (OVRInput.GetDown(OVRInput.Button.Two))
+        {
+            ToggleSelectionIndicator();
+        }
+    }
+
+    private void HandleInput()
+    {
         if (OVRInput.Get(OVRInput.Button.PrimaryIndexTrigger))
         {
-            Debug.Log("press");
             Vector3 controllerPosition = OVRInput.GetLocalControllerPosition(OVRInput.Controller.LTouch);
             Quaternion controllerRotation = OVRInput.GetLocalControllerRotation(OVRInput.Controller.LTouch);
             Vector3 rayDirection = controllerRotation * Vector3.forward;
@@ -46,12 +77,9 @@ public class PlaneScript : MonoBehaviour
 
                 OVRSemanticClassification anchor = hitPlane.GetComponentInParent<OVRSemanticClassification>();
                 List<string> labelsList = (List<string>)anchor.Labels;
-                Debug.Log(labelsList.ToString());
 
                 if (labelsList.Contains("WALL_FACE"))
                 {
-                    Debug.Log($"Hit: {string.Join(", ", anchor.Labels)}");
-
                     PlayHitSound();
 
                     Material material = new Material(shader);
@@ -69,8 +97,9 @@ public class PlaneScript : MonoBehaviour
                     float tileY = planeHeight / imageHeight;
                     material.mainTextureScale = new Vector2(tileX, tileY);
 
-                    MeshRenderer planeRenderer = hitPlane.GetComponentInParent<MeshRenderer>();
                     lastAppliedMaterial = material;
+                    lastAppliedColor = material.color;
+                    MeshRenderer planeRenderer = hitPlane.GetComponentInParent<MeshRenderer>();
                     planeRenderer.material = material;
 
                     UpdateMaterialPropertiesText(material);
@@ -115,7 +144,8 @@ public class PlaneScript : MonoBehaviour
             materialPropertiesText.text = $"Material Properties:\n" +
                                           $"Texture: {material.mainTexture.name}\n" +
                                           $"Scale: {material.mainTextureScale.x:F2}, {material.mainTextureScale.y:F2}\n" +
-                                          $"Shader: {material.shader.name}";
+                                          $"Shader: {material.shader.name}\n" +
+                                          $"Color: {material.color}";
         }
     }
 
@@ -150,5 +180,71 @@ public class PlaneScript : MonoBehaviour
             scaleSlider.value = 0.0005f;
             AdjustMaterialProperty(scaleSlider.value);
         }
+    }
+
+    private void OnColorChanged(Color newColor)
+    {
+        if (lastAppliedMaterial != null)
+        {
+            lastAppliedMaterial.color = newColor;
+            lastAppliedColor = newColor;
+            UpdateMaterialPropertiesText(lastAppliedMaterial);
+        }
+    }
+
+    private void SaveMaterialSettings()
+    {
+        if (lastAppliedMaterial != null)
+        {
+            MaterialSettings settings = new MaterialSettings
+            {
+                TextureName = lastAppliedMaterial.mainTexture.name,
+                ShaderName = lastAppliedMaterial.shader.name,
+                Color = lastAppliedColor,
+                ScaleX = lastAppliedMaterial.mainTextureScale.x,
+                ScaleY = lastAppliedMaterial.mainTextureScale.y
+            };
+
+            string json = JsonUtility.ToJson(settings);
+            System.IO.File.WriteAllText(savedMaterialPath, json);
+
+            Debug.Log("Material settings saved.");
+        }
+    }
+
+    private void LoadMaterialSettings()
+    {
+        if (System.IO.File.Exists(savedMaterialPath))
+        {
+            string json = System.IO.File.ReadAllText(savedMaterialPath);
+            MaterialSettings settings = JsonUtility.FromJson<MaterialSettings>(json);
+
+            Material material = new Material(Shader.Find(settings.ShaderName));
+            material.mainTexture = Resources.Load<Texture2D>(settings.TextureName);
+            material.color = settings.Color;
+            material.mainTextureScale = new Vector2(settings.ScaleX, settings.ScaleY);
+
+            lastAppliedMaterial = material;
+            lastAppliedColor = settings.Color;
+
+            UpdateMaterialPropertiesText(material);
+
+            Debug.Log("Material settings loaded.");
+        }
+    }
+
+    private void ToggleSelectionIndicator()
+    {
+        selectionIndicator.SetActive(!selectionIndicator.activeSelf);
+    }
+
+    [Serializable]
+    private class MaterialSettings
+    {
+        public string TextureName;
+        public string ShaderName;
+        public Color Color;
+        public float ScaleX;
+        public float ScaleY;
     }
 }
