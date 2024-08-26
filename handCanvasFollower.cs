@@ -21,6 +21,10 @@ public class handCanvasFollower : MonoBehaviour
     public Slider rotationYSlider;
     public Slider rotationZSlider;
 
+    private Vector3 lastHandPosition;
+    public float handSpeedThreshold = 0.1f; 
+    public float handSpeedMultiplier = 2f;  
+
     void Start()
     {
         targetHandTransform = leftHand.transform;
@@ -38,13 +42,28 @@ public class handCanvasFollower : MonoBehaviour
         if (rotationXSlider != null) rotationXSlider.onValueChanged.AddListener(UpdateRotationOffsetX);
         if (rotationYSlider != null) rotationYSlider.onValueChanged.AddListener(UpdateRotationOffsetY);
         if (rotationZSlider != null) rotationZSlider.onValueChanged.AddListener(UpdateRotationOffsetZ);
+
+        lastHandPosition = targetHandTransform.position;
+        LoadOffsets();  
     }
 
     void Update()
     {
         if (targetHandTransform != null)
         {
-            transform.position = targetHandTransform.position + targetHandTransform.TransformDirection(positionOffset);
+            Vector3 handDelta = targetHandTransform.position - lastHandPosition;
+            float handSpeed = handDelta.magnitude / Time.deltaTime;
+
+            if (handSpeed > handSpeedThreshold)
+            {
+                Vector3 dynamicOffset = positionOffset * handSpeedMultiplier;
+                transform.position = targetHandTransform.position + targetHandTransform.TransformDirection(dynamicOffset);
+            }
+            else
+            {
+                transform.position = targetHandTransform.position + targetHandTransform.TransformDirection(positionOffset);
+            }
+
             transform.rotation = targetHandTransform.rotation * Quaternion.Euler(rotationOffset);
 
             if (canvas != null && scrollViewRectTransform != null)
@@ -62,6 +81,19 @@ public class handCanvasFollower : MonoBehaviour
                 Debug.Log("Canvas toggled " + toggleCount + " times.");
             }
             wasIndexPinching = isIndexPinching;
+            lastHandPosition = targetHandTransform.position;
+        }
+        if (Input.GetKeyDown(KeyCode.Space))
+        {
+            ToggleCanvasVisibility();
+        }
+        if (Input.GetKeyDown(KeyCode.S))
+        {
+            SaveOffsets();
+        }
+        if (Input.GetKeyDown(KeyCode.L))
+        {
+            LoadOffsets();
         }
     }
 
@@ -106,5 +138,35 @@ public class handCanvasFollower : MonoBehaviour
         positionOffset = new Vector3(0, 0, 0.1f);
         rotationOffset = new Vector3(0, 0, 0);
         Debug.Log("Canvas position and rotation reset.");
+    }
+
+    public void ToggleCanvasVisibility()
+    {
+        isCanvasVisible = !isCanvasVisible;
+        canvas.enabled = isCanvasVisible;
+        Debug.Log("Canvas visibility toggled with keyboard.");
+    }
+
+    public void SaveOffsets()
+    {
+        PlayerPrefs.SetFloat("PositionOffsetX", positionOffset.x);
+        PlayerPrefs.SetFloat("PositionOffsetY", positionOffset.y);
+        PlayerPrefs.SetFloat("PositionOffsetZ", positionOffset.z);
+        PlayerPrefs.SetFloat("RotationOffsetX", rotationOffset.x);
+        PlayerPrefs.SetFloat("RotationOffsetY", rotationOffset.y);
+        PlayerPrefs.SetFloat("RotationOffsetZ", rotationOffset.z);
+        PlayerPrefs.Save();
+        Debug.Log("Offsets saved.");
+    }
+
+    public void LoadOffsets()
+    {
+        positionOffset.x = PlayerPrefs.GetFloat("PositionOffsetX", 0);
+        positionOffset.y = PlayerPrefs.GetFloat("PositionOffsetY", 0);
+        positionOffset.z = PlayerPrefs.GetFloat("PositionOffsetZ", 0.1f);
+        rotationOffset.x = PlayerPrefs.GetFloat("RotationOffsetX", 0);
+        rotationOffset.y = PlayerPrefs.GetFloat("RotationOffsetY", 0);
+        rotationOffset.z = PlayerPrefs.GetFloat("RotationOffsetZ", 0);
+        Debug.Log("Offsets loaded.");
     }
 }
