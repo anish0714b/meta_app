@@ -2,207 +2,179 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.Rendering;
+using static OVRInput;
+using SelfButton = UnityEngine.UI.Button;
 
-public class handCanvasFollower : MonoBehaviour
+public class NewPanel : MonoBehaviour
 {
-    public OVRHand leftHand;
-    public Vector3 positionOffset = new Vector3(0, 0, 0.1f);
-    public Vector3 rotationOffset = new Vector3(0, 0, 0);
-    private Canvas canvas;
-    private RectTransform scrollViewRectTransform;
-    private bool isCanvasVisible = false;
-    private bool wasIndexPinching = false;
-    private Transform targetHandTransform;
-    private int toggleCount = 0;
-    public Slider positionXSlider;
-    public Slider positionYSlider;
-    public Slider positionZSlider;
-    public Slider rotationXSlider;
-    public Slider rotationYSlider;
-    public Slider rotationZSlider;
+    private Texture2D[] textures;
+    public GameObject content;
+    public GameObject panel;
+    public GameObject selectedPanelDisplay;
+    private Texture2D currentTexture;
+    [SerializeField] private Shader shader;
+    private GameObject[] borderPanels;
+    int width = 1200;
+    int height = 13874;
+    public OVRHand hand;
+    private Vector3 originalScale;
 
-    private Vector3 lastHandPosition;
-    public float handSpeedThreshold = 0.1f;
-    public float handSpeedMultiplier = 2f;
-
-    public float autoHideDelay = 5f;  // Time in seconds to auto-hide the canvas
-    private float lastToggleTime;
-
-    public KeyCode saveKey = KeyCode.S;
-    public KeyCode loadKey = KeyCode.L;
-    public string presetName = "DefaultPreset";
-
-    private bool isThumbsUpGesture = false;
-    private bool wasThumbsUpGesture = false;
+    private bool isDragging = false;
+    private Vector3 dragStartPos;
+    private GameObject selectedPanel;
 
     void Start()
     {
-        targetHandTransform = leftHand.transform;
-        canvas = GetComponent<Canvas>();
-        ScrollRect scrollRect = GetComponentInChildren<ScrollRect>();
-        if (scrollRect != null)
+        textures = Resources.LoadAll<Texture2D>("panels");
+        borderPanels = new GameObject[textures.Length];
+
+        for (int i = 0; i < textures.Length; i++)
         {
-            scrollViewRectTransform = scrollRect.GetComponent<RectTransform>();
+            GameObject newPanel = Instantiate(panel, content.transform);
+            Image childImage = newPanel.GetComponent<Image>();
+            childImage.sprite = Sprite.Create(textures[i], new Rect(0, 0, textures[i].width, textures[i].height), Vector2.one * 0.5f);
+
+            SelfButton button = newPanel.GetComponent<SelfButton>();
+            int temp = i;
+            button.onClick.AddListener(() => OnPanelClick(temp));
+
+            borderPanels[i] = newPanel;
+            newPanel.transform.localPosition = new Vector3(0, -i * (textures[i].height + 10), 0);
         }
-        canvas.enabled = isCanvasVisible;
 
-        if (positionXSlider != null) positionXSlider.onValueChanged.AddListener(UpdatePositionOffsetX);
-        if (positionYSlider != null) positionYSlider.onValueChanged.AddListener(UpdatePositionOffsetY);
-        if (positionZSlider != null) positionZSlider.onValueChanged.AddListener(UpdatePositionOffsetZ);
-        if (rotationXSlider != null) rotationXSlider.onValueChanged.AddListener(UpdateRotationOffsetX);
-        if (rotationYSlider != null) rotationYSlider.onValueChanged.AddListener(UpdateRotationOffsetY);
-        if (rotationZSlider != null) rotationZSlider.onValueChanged.AddListener(UpdateRotationOffsetZ);
-
-        lastHandPosition = targetHandTransform.position;
-        LoadOffsets(presetName);
-
-        lastToggleTime = Time.time;
+        currentTexture = textures[0];
+        originalScale = borderPanels[0].transform.localScale;
+        UpdateSelectedPanelDisplay();
     }
 
     void Update()
     {
-        if (targetHandTransform != null)
-        {
-            Vector3 handDelta = targetHandTransform.position - lastHandPosition;
-            float handSpeed = handDelta.magnitude / Time.deltaTime;
+        HandleInput();
 
-            if (handSpeed > handSpeedThreshold)
+        if (isDragging)
+        {
+            Vector3 controllerPosition = OVRInput.GetLocalControllerPosition(OVRInput.Controller.RTouch);
+            selectedPanel.transform.position = controllerPosition + dragStartPos;
+        }
+    }
+
+    void HandleInput()
+    {
+        if (OVRInput.Get(OVRInput.Button.PrimaryIndexTrigger) || 
+            OVRInput.Get(OVRInput.Button.SecondaryIndexTrigger) ||
+            hand.GetFingerIsPinching(OVRHand.HandFinger.Index))
+        {
+            Vector3 controllerPosition;
+            Quaternion controllerRotation;
+            bool isHandPinching = hand.GetFingerIsPinching(OVRHand.HandFinger.Index);
+
+            if (OVRInput.Get(OVRInput.Button.PrimaryIndexTrigger))
             {
-                Vector3 dynamicOffset = positionOffset * handSpeedMultiplier;
-                transform.position = targetHandTransform.position + targetHandTransform.TransformDirection(dynamicOffset);
+                controllerPosition = OVRInput.GetLocalControllerPosition(OVRInput.Controller.LTouch);
+                controllerRotation = OVRInput.GetLocalControllerRotation(OVRInput.Controller.LTouch);
+            }
+            else if (OVRInput.Get(OVRInput.Button.SecondaryIndexTrigger))
+            {
+                controllerPosition = OVRInput.GetLocalControllerPosition(OVRInput.Controller.RTouch);
+                controllerRotation = OVRInput.GetLocalControllerRotation(OVRInput.Controller.RTouch);
+            }
+            else if (isHandPinching)
+            {
+                controllerPosition = hand.PointerPose.position;
+                controllerRotation = hand.PointerPose.rotation;
+                Debug.Log("Index finger is pinching");
             }
             else
             {
-                transform.position = targetHandTransform.position + targetHandTransform.TransformDirection(positionOffset);
+                return;
             }
 
-            transform.rotation = targetHandTransform.rotation * Quaternion.Euler(rotationOffset);
+            Vector3 rayDirection = controllerRotation * Vector3.forward;
+            RaycastHit hit;
 
-            if (canvas != null && scrollViewRectTransform != null)
+            if (Physics.Raycast(controllerPosition, rayDirection, out hit))
             {
-                Canvas.ForceUpdateCanvases();
-                LayoutRebuilder.ForceRebuildLayoutImmediate(scrollViewRectTransform);
-            }
+                GameObject hitPlane = hit.collider.gameObject;
+                if (hitPlane.transform.parent == null) return;
+                if (hitPlane.transform.parent.name == "WALL_FACE")
+                {
+                    Debug.Log($"Hit: {hitPlane.transform.parent.name}");
 
-            bool isIndexPinching = leftHand.GetFingerIsPinching(OVRHand.HandFinger.Index);
-            if (isIndexPinching && !wasIndexPinching)
+                    Material material = new Material(shader);
+                    material.mainTexture = currentTexture;
+                    material.SetFloat("_Cull", (float)CullMode.Off);
+                    material.SetFloat("_EnvironmentDepthBias", 0.06f);
+
+                    float scaleFactor = 0.0001f;
+                    float imageWidth = width * scaleFactor;
+                    float imageHeight = height * scaleFactor;
+
+                    float planeWidth = hitPlane.transform.localScale.x;
+                    float planeHeight = hitPlane.transform.localScale.z;
+
+                    float tileX = planeWidth / imageWidth;
+                    float tileY = planeHeight / imageHeight;
+                    material.mainTextureScale = new Vector2(tileX, tileY);
+
+                    MeshRenderer planeRenderer = hitPlane.GetComponentInParent<MeshRenderer>();
+                    planeRenderer.material = material;
+                }
+                else
+                {
+                    Debug.Log($"{hitPlane.transform.parent.name} is not a wall");
+                }
+            }
+        }
+
+        if (OVRInput.GetDown(OVRInput.Button.One))
+        {
+            Debug.Log("One button pressed");
+            if (selectedPanel != null)
             {
-                ToggleCanvasVisibility();
+                isDragging = true;
+                dragStartPos = selectedPanel.transform.position - OVRInput.GetLocalControllerPosition(OVRInput.Controller.RTouch);
             }
-            wasIndexPinching = isIndexPinching;
-            lastHandPosition = targetHandTransform.position;
+        }
 
-            // Auto-hide canvas after a delay
-            if (isCanvasVisible && Time.time - lastToggleTime > autoHideDelay)
+        if (OVRInput.GetUp(OVRInput.Button.One))
+        {
+            Debug.Log("One button released");
+            isDragging = false;
+        }
+    }
+
+    void OnPanelClick(int t)
+    {
+        Debug.Log(t);
+        currentTexture = textures[t];
+        UpdateSelectedPanelDisplay();
+
+        for (int i = 0; i < textures.Length; i++)
+        {
+            if (i == t)
             {
-                isCanvasVisible = false;
-                canvas.enabled = false;
-                Debug.Log("Canvas auto-hidden after delay.");
+                borderPanels[i].transform.localScale = new Vector3(originalScale.x * 1.2f, originalScale.y * 1.2f, originalScale.z);
+                selectedPanel = borderPanels[i];
+            }
+            else
+            {
+                borderPanels[i].transform.localScale = originalScale;
             }
         }
+    }
 
-        if (Input.GetKeyDown(KeyCode.Space))
+    void UpdateSelectedPanelDisplay()
+    {
+        Image displayImage = selectedPanelDisplay.GetComponent<Image>();
+        displayImage.sprite = Sprite.Create(currentTexture, new Rect(0, 0, currentTexture.width, currentTexture.height), Vector2.one * 0.5f);
+    }
+
+    public void ResetPanelPositions()
+    {
+        for (int i = 0; i < borderPanels.Length; i++)
         {
-            ToggleCanvasVisibility();
+            borderPanels[i].transform.localPosition = new Vector3(0, -i * (textures[i].height + 10), 0);
         }
-        if (Input.GetKeyDown(saveKey))
-        {
-            SaveOffsets(presetName);
-        }
-        if (Input.GetKeyDown(loadKey))
-        {
-            LoadOffsets(presetName);
-        }
-
-        DetectThumbsUpGesture();
-        if (isThumbsUpGesture && !wasThumbsUpGesture)
-        {
-            ToggleCanvasVisibility();
-            Debug.Log("Canvas toggled with Thumbs Up gesture.");
-        }
-        wasThumbsUpGesture = isThumbsUpGesture;
-    }
-
-    void UpdatePositionOffsetX(float value)
-    {
-        positionOffset.x = value;
-        Debug.Log("Position X Offset: " + value);
-    }
-
-    void UpdatePositionOffsetY(float value)
-    {
-        positionOffset.y = value;
-        Debug.Log("Position Y Offset: " + value);
-    }
-
-    void UpdatePositionOffsetZ(float value)
-    {
-        positionOffset.z = value;
-        Debug.Log("Position Z Offset: " + value);
-    }
-
-    void UpdateRotationOffsetX(float value)
-    {
-        rotationOffset.x = value;
-        Debug.Log("Rotation X Offset: " + value);
-    }
-
-    void UpdateRotationOffsetY(float value)
-    {
-        rotationOffset.y = value;
-        Debug.Log("Rotation Y Offset: " + value);
-    }
-
-    void UpdateRotationOffsetZ(float value)
-    {
-        rotationOffset.z = value;
-        Debug.Log("Rotation Z Offset: " + value);
-    }
-
-    public void ResetCanvasPosition()
-    {
-        positionOffset = new Vector3(0, 0, 0.1f);
-        rotationOffset = new Vector3(0, 0, 0);
-        Debug.Log("Canvas position and rotation reset.");
-    }
-
-    public void ToggleCanvasVisibility()
-    {
-        isCanvasVisible = !isCanvasVisible;
-        canvas.enabled = isCanvasVisible;
-        lastToggleTime = Time.time;
-        Debug.Log("Canvas visibility toggled.");
-    }
-
-    public void SaveOffsets(string preset)
-    {
-        PlayerPrefs.SetFloat(preset + "_PositionOffsetX", positionOffset.x);
-        PlayerPrefs.SetFloat(preset + "_PositionOffsetY", positionOffset.y);
-        PlayerPrefs.SetFloat(preset + "_PositionOffsetZ", positionOffset.z);
-        PlayerPrefs.SetFloat(preset + "_RotationOffsetX", rotationOffset.x);
-        PlayerPrefs.SetFloat(preset + "_RotationOffsetY", rotationOffset.y);
-        PlayerPrefs.SetFloat(preset + "_RotationOffsetZ", rotationOffset.z);
-        PlayerPrefs.Save();
-        Debug.Log("Offsets saved as " + preset);
-    }
-
-    public void LoadOffsets(string preset)
-    {
-        positionOffset.x = PlayerPrefs.GetFloat(preset + "_PositionOffsetX", 0);
-        positionOffset.y = PlayerPrefs.GetFloat(preset + "_PositionOffsetY", 0);
-        positionOffset.z = PlayerPrefs.GetFloat(preset + "_PositionOffsetZ", 0.1f);
-        rotationOffset.x = PlayerPrefs.GetFloat(preset + "_RotationOffsetX", 0);
-        rotationOffset.y = PlayerPrefs.GetFloat(preset + "_RotationOffsetY", 0);
-        rotationOffset.z = PlayerPrefs.GetFloat(preset + "_RotationOffsetZ", 0);
-        Debug.Log("Offsets loaded from " + preset);
-    }
-
-    private void DetectThumbsUpGesture()
-    {
-        isThumbsUpGesture = leftHand.GetFingerIsPinching(OVRHand.HandFinger.Thumb) &&
-                            !leftHand.GetFingerIsPinching(OVRHand.HandFinger.Index) &&
-                            !leftHand.GetFingerIsPinching(OVRHand.HandFinger.Middle) &&
-                            !leftHand.GetFingerIsPinching(OVRHand.HandFinger.Ring) &&
-                            !leftHand.GetFingerIsPinching(OVRHand.HandFinger.Pinky);
     }
 }
