@@ -1,166 +1,257 @@
-
-//Size increase 
-
-
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using static OVRInput;
+using TMPro;
 using UnityEngine.UI;
 using UnityEngine.Rendering;
-using static OVRInput;
-using SelfButton = UnityEngine.UI.Button;
 
-public class NewPanel : MonoBehaviour
+public class LineScript : MonoBehaviour
 {
-    private Texture2D[] textures;
-
-    public GameObject content;
-    public GameObject panel;
-    public GameObject selectedPanelDisplay; // The GameObject to display the currently selected wall panel
-
-    private Texture2D currentTexture;
+    [SerializeField] private TMP_Text text;
+    [SerializeField] private Texture2D texture;
     [SerializeField] private Shader shader;
-
-    private GameObject[] borderPanels;
+    [SerializeField] private List<Texture2D> textures; 
+    [SerializeField] private float transparency = 1.0f; 
+    private int currentTextureIndex = 0; 
     int width = 1200;
     int height = 13874;
+    
+    private Dictionary<string, Vector2> textureScales = new Dictionary<string, Vector2>(); 
+    private Stack<string> undoStack = new Stack<string>(); 
+    private float defaultScaleFactor = 0.0005f; 
+    private bool debugMode = false; 
 
-    public OVRHand hand;
-
-    private Vector3 originalScale;
-
-    // Start is called before the first frame update
     void Start()
     {
-        textures = Resources.LoadAll<Texture2D>("panels");
-        borderPanels = new GameObject[textures.Length];
-
-        // Iterate through the textures array and create panels
-        for (int i = 0; i < textures.Length; i++)
+        if (text != null)
         {
-            // Create a new panel
-            GameObject newPanel = Instantiate(panel, content.transform);
-            Image childImage = newPanel.GetComponent<Image>();
-            childImage.sprite = Sprite.Create(textures[i], new Rect(0, 0, textures[i].width, textures[i].height), Vector2.one * 0.5f);
-
-            // Assign the click function
-            SelfButton button = newPanel.GetComponent<SelfButton>();
-            int temp = i;
-            button.onClick.AddListener(() => OnPanelClick(temp));
-
-            // Ensure the border panel reference is set correctly
-            borderPanels[i] = newPanel;
-
-            // Adjust the panel's position to prevent overlap (if needed)
-            newPanel.transform.localPosition = new Vector3(0, -i * (textures[i].height + 10), 0); // Adjust spacing as needed
+            text.text = "Ready to interact";
         }
-
-        currentTexture = textures[0];
-        originalScale = borderPanels[0].transform.localScale; // Assuming all panels have the same original scale
-        UpdateSelectedPanelDisplay();
     }
 
-    // Update is called once per frame
     void Update()
     {
-        if (OVRInput.Get(OVRInput.Button.PrimaryIndexTrigger) || 
-            OVRInput.Get(OVRInput.Button.SecondaryIndexTrigger) ||
-            hand.GetFingerIsPinching(OVRHand.HandFinger.Index))
+        if (OVRInput.Get(OVRInput.Button.SecondaryIndexTrigger))
         {
-            Vector3 controllerPosition;
-            Quaternion controllerRotation;
-            bool isHandPinching = hand.GetFingerIsPinching(OVRHand.HandFinger.Index);
-
-            if (OVRInput.Get(OVRInput.Button.PrimaryIndexTrigger))
-            {
-                controllerPosition = OVRInput.GetLocalControllerPosition(OVRInput.Controller.LTouch);
-                controllerRotation = OVRInput.GetLocalControllerRotation(OVRInput.Controller.LTouch);
-            }
-            else if (OVRInput.Get(OVRInput.Button.SecondaryIndexTrigger))
-            {
-                controllerPosition = OVRInput.GetLocalControllerPosition(OVRInput.Controller.RTouch);
-                controllerRotation = OVRInput.GetLocalControllerRotation(OVRInput.Controller.RTouch);
-            }
-            else if (isHandPinching)
-            {
-                controllerPosition = hand.PointerPose.position;
-                controllerRotation = hand.PointerPose.rotation;
-                Debug.Log("Index finger is pinching");
-            }
-            else
-            {
-                return; // No valid input detected
-            }
-
+            Vector3 controllerPosition = OVRInput.GetLocalControllerPosition(OVRInput.Controller.RTouch);
+            Quaternion controllerRotation = OVRInput.GetLocalControllerRotation(OVRInput.Controller.RTouch);
             Vector3 rayDirection = controllerRotation * Vector3.forward;
 
             RaycastHit hit;
             if (Physics.Raycast(controllerPosition, rayDirection, out hit))
             {
                 GameObject hitPlane = hit.collider.gameObject;
-                if (hitPlane.transform.parent == null) return;
+
                 if (hitPlane.transform.parent.name == "WALL_FACE")
                 {
                     Debug.Log($"Hit: {hitPlane.transform.parent.name}");
 
-                    Material material = new Material(shader);
-                    material.mainTexture = currentTexture;
-                    material.SetFloat("_Cull", (float)CullMode.Off);
-                    material.SetFloat("_EnvironmentDepthBias", 0.06f);
-
-                    float scaleFactor = 0.0001f;
-                    // Constrain the dimensions
-                    float imageWidth = width * scaleFactor;
-                    float imageHeight = height * scaleFactor;
-
-                    // Obtain the plane's dimensions
-                    float planeWidth = hitPlane.transform.localScale.x;
-                    float planeHeight = hitPlane.transform.localScale.z;
-
-                    // Set the tiling values
-                    float tileX = planeWidth / imageWidth;
-                    float tileY = planeHeight / imageHeight;
-                    material.mainTextureScale = new Vector2(tileX, tileY);
-
-                    // Apply the material to the plane
-                    MeshRenderer planeRenderer = hitPlane.GetComponentInParent<MeshRenderer>();
-                    planeRenderer.material = material;
+                    ApplyTextureToPlane(hitPlane);
+                    undoStack.Push(hitPlane.name); 
                 }
                 else
                 {
                     Debug.Log($"{hitPlane.transform.parent.name} is not a wall");
+
+                    if (text != null)
+                    {
+                        text.text = $"{hitPlane.transform.parent.name} is not a valid target.";
+                    }
+                }
+            }
+        }
+
+        if (OVRInput.Get(OVRInput.Button.One))
+        {
+            GameObject[] wallFaces = GameObject.FindGameObjectsWithTag("WALL_FACE");
+            foreach (GameObject wallFace in wallFaces)
+            {
+                ApplyTextureToPlane(wallFace);
+                undoStack.Push(wallFace.name);
+            }
+        }
+
+        if (OVRInput.Get(OVRInput.Button.Two))
+        {
+            ResetAllPlanes();
+        }
+
+        if (OVRInput.Get(OVRInput.Button.Start))
+        {
+            SaveTextureSettings();
+        }
+
+        if (OVRInput.Get(OVRInput.Button.Back))
+        {
+            LoadTextureSettings();
+        }
+
+        if (OVRInput.GetDown(OVRInput.Button.Four)) 
+        {
+            CycleTexture();
+        }
+
+        if (OVRInput.GetDown(OVRInput.Button.Three)) 
+        {
+            UndoLastTexture();
+        }
+
+        if (OVRInput.Get(OVRInput.Button.PrimaryThumbstick)) 
+        {
+            AdjustTransparency(OVRInput.Get(OVRInput.Axis2D.PrimaryThumbstick).x);
+        }
+
+        if (OVRInput.GetDown(OVRInput.Button.PrimaryHandTrigger)) 
+        {
+            ToggleDebugMode();
+        }
+    }
+
+    private void ApplyTextureToPlane(GameObject plane)
+    {
+        Material material = new Material(shader);
+        material.mainTexture = texture;
+        material.SetFloat("_Cull", (float)CullMode.Off);
+
+        float scaleFactor = defaultScaleFactor;
+        if (textureScales.ContainsKey(plane.name))
+        {
+            Vector2 savedScale = textureScales[plane.name];
+            scaleFactor = savedScale.x / width; 
+        }
+
+        float imageWidth = width * scaleFactor;
+        float imageHeight = height * scaleFactor;
+
+        float planeWidth = plane.transform.localScale.x;
+        float planeHeight = plane.transform.localScale.z;
+
+        float tileX = planeWidth / imageWidth;
+        float tileY = planeHeight / imageHeight;
+        material.mainTextureScale = new Vector2(tileX, tileY);
+        material.color = new Color(1, 1, 1, transparency); // Set transparency
+
+        MeshRenderer planeRenderer = plane.GetComponentInParent<MeshRenderer>();
+        planeRenderer.material = material;
+
+        if (text != null)
+        {
+            text.text = $"Applied texture to {plane.name}";
+        }
+
+        if (debugMode)
+        {
+            Debug.Log($"Applied texture to {plane.name} with scale: {tileX}, {tileY}");
+        }
+    }
+
+    private void ResetAllPlanes()
+    {
+        GameObject[] wallFaces = GameObject.FindGameObjectsWithTag("WALL_FACE");
+        foreach (GameObject wallFace in wallFaces)
+        {
+            MeshRenderer planeRenderer = wallFace.GetComponentInParent<MeshRenderer>();
+            planeRenderer.material = null;
+
+            if (text != null)
+            {
+                text.text = $"Reset {wallFace.name}";
+            }
+
+            if (debugMode)
+            {
+                Debug.Log($"Reset texture for {wallFace.name}");
+            }
+        }
+    }
+
+    private void SaveTextureSettings()
+    {
+        GameObject[] wallFaces = GameObject.FindGameObjectsWithTag("WALL_FACE");
+        foreach (GameObject wallFace in wallFaces)
+        {
+            MeshRenderer planeRenderer = wallFace.GetComponentInParent<MeshRenderer>();
+            if (planeRenderer != null && planeRenderer.material != null)
+            {
+                Vector2 textureScale = planeRenderer.material.mainTextureScale;
+                textureScales[wallFace.name] = textureScale;
+                PlayerPrefs.SetFloat($"{wallFace.name}_TileX", textureScale.x);
+                PlayerPrefs.SetFloat($"{wallFace.name}_TileY", textureScale.y);
+                Debug.Log($"Saved texture scale for {wallFace.name}: {textureScale}");
+            }
+        }
+        PlayerPrefs.Save();
+        if (text != null)
+        {
+            text.text = "Texture settings saved!";
+        }
+    }
+
+    private void LoadTextureSettings()
+    {
+        GameObject[] wallFaces = GameObject.FindGameObjectsWithTag("WALL_FACE");
+        foreach (GameObject wallFace in wallFaces)
+        {
+            if (PlayerPrefs.HasKey($"{wallFace.name}_TileX") && PlayerPrefs.HasKey($"{wallFace.name}_TileY"))
+            {
+                float tileX = PlayerPrefs.GetFloat($"{wallFace.name}_TileX");
+                float tileY = PlayerPrefs.GetFloat($"{wallFace.name}_TileY");
+                textureScales[wallFace.name] = new Vector2(tileX, tileY);
+                Debug.Log($"Loaded texture scale for {wallFace.name}: {tileX}, {tileY}");
+                ApplyTextureToPlane(wallFace); // Reapply texture with loaded settings
+            }
+        }
+        if (text != null)
+        {
+            text.text = "Texture settings loaded!";
+        }
+    }
+
+    private void CycleTexture()
+    {
+        currentTextureIndex = (currentTextureIndex + 1) % textures.Count;
+        texture = textures[currentTextureIndex];
+        if (text != null)
+        {
+            text.text = $"Texture changed to {texture.name}";
+        }
+    }
+
+    private void UndoLastTexture()
+    {
+        if (undoStack.Count > 0)
+        {
+            string lastPlaneName = undoStack.Pop();
+            GameObject lastPlane = GameObject.Find(lastPlaneName);
+            if (lastPlane != null)
+            {
+                MeshRenderer planeRenderer = lastPlane.GetComponentInParent<MeshRenderer>();
+                planeRenderer.material = null;
+                if (text != null)
+                {
+                    text.text = $"Undid texture on {lastPlaneName}";
+                }
+                if (debugMode)
+                {
+                    Debug.Log($"Undid texture on {lastPlaneName}");
                 }
             }
         }
     }
 
-    void OnPanelClick(int t)
+    private void AdjustTransparency(float adjustment)
     {
-        Debug.Log(t);
-        currentTexture = textures[t];
-
-        // Update the selected panel display
-        UpdateSelectedPanelDisplay();
-
-        // Resize the selected panel and reset others
-        for (int i = 0; i < textures.Length; i++)
+        transparency = Mathf.Clamp01(transparency + adjustment * 0.1f);
+        if (text != null)
         {
-            if (i == t)
-            {
-                // Enlarge the selected panel by scaling both width and height
-                borderPanels[i].transform.localScale = new Vector3(originalScale.x * 1.2f, originalScale.y * 1.2f, originalScale.z);
-            }
-
-            else
-            {
-                borderPanels[i].transform.localScale = originalScale; // Reset to original size
-            }
+            text.text = $"Transparency adjusted to {transparency}";
         }
     }
 
-    void UpdateSelectedPanelDisplay()
+    private void ToggleDebugMode()
     {
-        Image displayImage = selectedPanelDisplay.GetComponent<Image>();
-        displayImage.sprite = Sprite.Create(currentTexture, new Rect(0, 0, currentTexture.width, currentTexture.height), Vector2.one * 0.5f);
+        debugMode = !debugMode;
+        Debug.Log($"Debug mode: {debugMode}");
     }
 }
