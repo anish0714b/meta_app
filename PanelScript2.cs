@@ -24,10 +24,38 @@ public class PanelsScript2 : MonoBehaviour
 
     private int lastSelectedPanelIndex = -1;
 
+    public Slider scaleSlider;
+    public AudioClip clickSound;
+    private AudioSource audioSource;
+
+    public GameObject loadingScreen;
+    public TextMeshProUGUI loadingText;
+    private bool isLoading = false;
+
     void Start()
     {
+        StartCoroutine(SetupPanels());
+        audioSource = gameObject.AddComponent<AudioSource>();
+    }
+
+    void Update()
+    {
+        if (isPanelSelected)
+        {
+            CheckForWallPointing();
+        }
+    }
+
+    private IEnumerator SetupPanels()
+    {
+        isLoading = true;
+        loadingScreen.SetActive(true);
+        loadingText.text = "Loading panels...";
+        yield return new WaitForSeconds(0.5f);
+
         textures = Resources.LoadAll<Texture2D>("panels");
         borderPanels = new GameObject[textures.Length];
+
         for (int i = 0; i < textures.Length; i++)
         {
             GameObject buttonGameObject = Instantiate(buttonPrefab);
@@ -41,19 +69,16 @@ public class PanelsScript2 : MonoBehaviour
             Image imageComponent = buttonGameObject.GetComponent<Image>();
             Sprite sprite = Sprite.Create(textures[i], new Rect(0, 0, textures[i].width, textures[i].height), Vector2.one * 0.5f);
             imageComponent.sprite = sprite;
+
+            yield return null; // Yielding here to simulate loading time and avoid freezing
         }
 
         currentTexture = textures[0];
         CreatePointCircle();
         LoadLastSelectedPanel();
-    }
 
-    void Update()
-    {
-        if (isPanelSelected)
-        {
-            CheckForWallPointing();
-        }
+        isLoading = false;
+        loadingScreen.SetActive(false);
     }
 
     private void CheckForWallPointing()
@@ -109,7 +134,7 @@ public class PanelsScript2 : MonoBehaviour
         material.SetFloat("_Cull", (float)CullMode.Off);
         material.SetFloat("_EnvironmentDepthBias", 0.06f);
 
-        float scaleFactor = 0.0001f;
+        float scaleFactor = scaleSlider != null ? scaleSlider.value : 0.0001f;
         float imageWidth = width * scaleFactor;
         float imageHeight = height * scaleFactor;
 
@@ -130,6 +155,7 @@ public class PanelsScript2 : MonoBehaviour
 
     void OnPanelClick(int t)
     {
+        PlayClickSound();
         currentTexture = textures[t];
         for (int i = 0; i < textures.Length; i++)
         {
@@ -181,5 +207,24 @@ public class PanelsScript2 : MonoBehaviour
         }
 
         panel.transform.localScale = originalScale;
+    }
+
+    private void PlayClickSound()
+    {
+        if (audioSource != null && clickSound != null)
+        {
+            audioSource.PlayOneShot(clickSound);
+        }
+    }
+
+    public void DeselectPanel()
+    {
+        isPanelSelected = false;
+        pointCircle.SetActive(false);
+        panelNameText.text = "No Panel Selected";
+        foreach (var panel in borderPanels)
+        {
+            panel.SetActive(false);
+        }
     }
 }
