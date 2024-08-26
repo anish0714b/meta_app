@@ -19,7 +19,10 @@ public class PanelsScript2 : MonoBehaviour
     int height = 13874;
 
     private GameObject pointCircle;
-    private bool isPanelSelected = false; // Track if a panel is selected
+    private bool isPanelSelected = false;
+    public TextMeshProUGUI panelNameText;
+
+    private int lastSelectedPanelIndex = -1;
 
     void Start()
     {
@@ -42,6 +45,7 @@ public class PanelsScript2 : MonoBehaviour
 
         currentTexture = textures[0];
         CreatePointCircle();
+        LoadLastSelectedPanel();
     }
 
     void Update()
@@ -121,6 +125,7 @@ public class PanelsScript2 : MonoBehaviour
 
         pointCircle.SetActive(false);
         isPanelSelected = false;
+        SaveLastSelectedPanel();
     }
 
     void OnPanelClick(int t)
@@ -128,9 +133,53 @@ public class PanelsScript2 : MonoBehaviour
         currentTexture = textures[t];
         for (int i = 0; i < textures.Length; i++)
         {
-            if (i == t) borderPanels[i].SetActive(true);
+            if (i == t)
+            {
+                borderPanels[i].SetActive(true);
+                StartCoroutine(AnimatePanel(borderPanels[i]));
+            }
             else borderPanels[i].SetActive(false);
         }
         isPanelSelected = true;
+        UpdatePanelName(t);
+        lastSelectedPanelIndex = t;
+    }
+
+    private void UpdatePanelName(int t)
+    {
+        if (panelNameText != null)
+        {
+            panelNameText.text = "Selected Panel: " + textures[t].name;
+        }
+    }
+
+    private void SaveLastSelectedPanel()
+    {
+        PlayerPrefs.SetInt("LastSelectedPanelIndex", lastSelectedPanelIndex);
+        PlayerPrefs.Save();
+    }
+
+    private void LoadLastSelectedPanel()
+    {
+        lastSelectedPanelIndex = PlayerPrefs.GetInt("LastSelectedPanelIndex", 0);
+        OnPanelClick(lastSelectedPanelIndex);
+    }
+
+    private IEnumerator AnimatePanel(GameObject panel)
+    {
+        Vector3 originalScale = panel.transform.localScale;
+        Vector3 targetScale = originalScale * 1.1f;
+
+        float duration = 0.3f;
+        float elapsedTime = 0f;
+
+        while (elapsedTime < duration)
+        {
+            panel.transform.localScale = Vector3.Lerp(originalScale, targetScale, (elapsedTime / duration));
+            elapsedTime += Time.deltaTime;
+            yield return null;
+        }
+
+        panel.transform.localScale = originalScale;
     }
 }
