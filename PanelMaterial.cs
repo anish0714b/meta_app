@@ -6,70 +6,110 @@ using UnityEngine.UI;
 
 public class PanelMaterial : MonoBehaviour
 {
-    private Texture2D[] textures;
-
+    private Texture2D[] textures; 
     public GameObject content;
+    public GameObject panel; 
 
-    public GameObject panel;
-    // Start is called before the first frame update
+    private List<GameObject> panels = new List<GameObject>(); 
+    private int currentTextureIndex = 0; 
+    private GridLayoutGroup gridLayout;
     void Start()
     {
-        textures = Resources.LoadAll<Texture2D>("panels");
-        // Iterate through the children array and set their Image component's material
+        textures = Resources.LoadAll<Texture2D>("panels"); 
+        gridLayout = content.GetComponent<GridLayoutGroup>();
         for (int i = 0; i < textures.Length; i++)
         {
-            // if(children.Length<textures.Length){
-                GameObject newPannel = Instantiate(panel, content.transform);
-
-            // }
-            Image childImage = newPannel.GetComponent<Image>();
-            childImage.sprite = Sprite.Create(textures[i], new Rect(0, 0, textures[i].width, textures[i].height), Vector2.one*0.5f);
+            GameObject newPanel = Instantiate(panel, content.transform); 
+            Image childImage = newPanel.GetComponent<Image>();
+            childImage.sprite = Sprite.Create(textures[i], new Rect(0, 0, textures[i].width, textures[i].height), Vector2.one * 0.5f); // Set the texture to the Image component
+            panels.Add(newPanel); 
         }
-     }
 
-    // Update is called once per fram
-    void Update()
+        AdjustContentSize(); 
+        LoadSelectedTexture(); 
+    }
+
+
+        void Update()
     {
-    
+
+                if (Input.GetKeyDown(KeyCode.RightArrow))
+        {
+            SwitchTexture(1); 
+        }
+        else if (Input.GetKeyDown(KeyCode.LeftArrow))
+        {
+            SwitchTexture(-1); 
+        }
+        if (Input.GetKeyDown(KeyCode.S))
+        {
+            SaveSelectedTexture(); 
+        }
+    }
+
+
+        void AdjustContentSize()
+    {
+        if (gridLayout != null)
+        {
+            int totalPanels = textures.Length;
+            float totalWidth = totalPanels * (gridLayout.cellSize.x + gridLayout.spacing.x);
+            RectTransform contentRect = content.GetComponent<RectTransform>();
+            contentRect.sizeDelta = new Vector2(totalWidth, contentRect.sizeDelta.y);
+        }
+    }
+
+
+        void SwitchTexture(int offset)
+    {
+        currentTextureIndex = (currentTextureIndex + offset + textures.Length) % textures.Length;
+        Texture2D newTexture = textures[currentTextureIndex];
+
+        foreach (GameObject panel in panels)
+        {
+            Image childImage = panel.GetComponent<Image>();
+            childImage.sprite = Sprite.Create(newTexture, new Rect(0, 0, newTexture.width, newTexture.height), Vector2.one * 0.5f);
+        }
+
+        Debug.Log($"Switched to texture: {newTexture.name}");
+    }
+
+
+        void SaveSelectedTexture()
+    {
+        PlayerPrefs.SetInt("SelectedTextureIndex", currentTextureIndex);
+        PlayerPrefs.Save();
+        Debug.Log($"Saved texture index: {currentTextureIndex}");
+    }
+
+
+        void LoadSelectedTexture()
+    {
+        if (PlayerPrefs.HasKey("SelectedTextureIndex"))
+        {
+            currentTextureIndex = PlayerPrefs.GetInt("SelectedTextureIndex");
+            SwitchTexture(0); 
+            
+            Debug.Log($"Loaded texture index: {currentTextureIndex}");
+        }
+        else
+        {
+            Debug.Log("No saved texture found. Using default.");
+        }
+    }
+    public void ResetTextureSelection()
+    {
+        currentTextureIndex = 0;
+        SwitchTexture(0);
+        Debug.Log("Reset texture selection to default.");
+    }
+    public void RemoveAllPanels()
+    {
+        foreach (GameObject panel in panels)
+        {
+            Destroy(panel);
+        }
+        panels.Clear();
+        Debug.Log("All panels removed.");
     }
 }
-
-
-
-
-
-// using UnityEngine;
-// using UnityEngine.UI;
-
-// public class ScrollViewController : MonoBehaviour
-// {
-//     public GameObject content; // The Content GameObject in the Scroll View
-//     public GameObject imagePrefab; // A prefab with an Image component to use as a template
-
-//     void Start()
-//     {
-//         // Load all textures from the Resources/panels folder
-//         Texture2D[] textures = Resources.LoadAll<Texture2D>("panels");
-
-//         // Iterate over each texture and create an Image UI element for each
-//         foreach (Texture2D texture in textures)
-//         {
-//             // Create a new instance of the image prefab
-//             GameObject newImage = Instantiate(imagePrefab, content.transform);
-
-//             // Set the texture to the Image component
-//             Image imageComponent = newImage.GetComponent<Image>();
-//             imageComponent.sprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f));
-//         }
-
-//         // Optionally, adjust the size of the Content to fit all images horizontally
-//         RectTransform contentRect = content.GetComponent<RectTransform>();
-//         GridLayoutGroup gridLayout = content.GetComponent<GridLayoutGroup>();
-//         if (gridLayout != null)
-//         {
-//             int totalImages = textures.Length;
-//             float totalWidth = totalImages * (gridLayout.cellSize.x + gridLayout.spacing.x);
-//             contentRect.sizeDelta = new Vector2(totalWidth, contentRect.sizeDelta.y);
-//         }
-//     }
-// }
