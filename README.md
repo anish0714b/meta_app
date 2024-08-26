@@ -1,2 +1,2 @@
 # meta_app
-making an app on meta quest
+Making an App on Meta Quest, you can setup this App and run on your device just run the panel script file.
