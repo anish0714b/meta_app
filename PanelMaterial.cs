@@ -190,4 +190,131 @@ public class PanelMaterial : MonoBehaviour
     {
         content.transform.localPosition = Vector3.zero;
     }
+public void SetPanelColor(Color color)
+{
+    foreach (GameObject panel in panels)
+    {
+        Image image = panel.GetComponent<Image>();
+        image.color = color;
+    }
+}
+
+public void HighlightPanel(int index, Color highlightColor)
+{
+    if (index >= 0 && index < panels.Count)
+    {
+        Image image = panels[index].GetComponent<Image>();
+        image.color = highlightColor;
+    }
+}
+
+public void RevertPanelHighlight(int index)
+{
+    if (index >= 0 && index < panels.Count)
+    {
+        Image image = panels[index].GetComponent<Image>();
+        image.color = Color.white;
+    }
+}
+
+public void SetPanelRotation(int index, float angle)
+{
+    if (index >= 0 && index < panels.Count)
+    {
+        panels[index].transform.rotation = Quaternion.Euler(0, 0, angle);
+    }
+}
+
+public void ResetPanelRotation(int index)
+{
+    if (index >= 0 && index < panels.Count)
+    {
+        panels[index].transform.rotation = Quaternion.identity;
+    }
+}
+
+public void SetPanelScale(int index, float scale)
+{
+    if (index >= 0 && index < panels.Count)
+    {
+        panels[index].transform.localScale = Vector3.one * scale;
+    }
+}
+
+public void ResetPanelScale(int index)
+{
+    if (index >= 0 && index < panels.Count)
+    {
+        panels[index].transform.localScale = Vector3.one;
+    }
+}
+
+public void SetPanelBorder(int index, float borderWidth, Color borderColor)
+{
+    if (index >= 0 && index < panels.Count)
+    {
+        Image image = panels[index].GetComponent<Image>();
+        image.material = new Material(Shader.Find("UI/Default"));
+        image.material.SetFloat("_Border", borderWidth);
+        image.material.SetColor("_BorderColor", borderColor);
+    }
+}
+
+public void ResetPanelBorder(int index)
+{
+    if (index >= 0 && index < panels.Count)
+    {
+        Image image = panels[index].GetComponent<Image>();
+        image.material.SetFloat("_Border", 0);
+    }
+}
+
+public void SetPanelText(int index, string text)
+{
+    if (index >= 0 && index < panels.Count)
+    {
+        Text panelText = panels[index].GetComponentInChildren<Text>();
+        if (panelText != null)
+        {
+            panelText.text = text;
+        }
+    }
+}
+
+public void SetPanelTextColor(int index, Color color)
+{
+    if (index >= 0 && index < panels.Count)
+    {
+        Text panelText = panels[index].GetComponentInChildren<Text>();
+        if (panelText != null)
+        {
+            panelText.color = color;
+        }
+    }
+}
+
+public void ResetPanelText(int index)
+{
+    if (index >= 0 && index < panels.Count)
+    {
+        Text panelText = panels[index].GetComponentInChildren<Text>();
+        if (panelText != null)
+        {
+            panelText.text = string.Empty;
+        }
+    }
+}
+
+public void SetPanelTextSize(int index, int size)
+{
+    if (index >= 0 && index < panels.Count)
+    {
+        Text panelText = panels[index].GetComponentInChildren<Text>();
+        if (panelText != null)
+        {
+            panelText.fontSize = size;
+        }
+    }
+}
+
 }
